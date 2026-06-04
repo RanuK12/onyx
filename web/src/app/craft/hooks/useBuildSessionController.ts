@@ -8,6 +8,7 @@ import { CRAFT_SEARCH_PARAM_NAMES } from "@/app/craft/services/searchParams";
 import { CRAFT_PATH } from "@/app/craft/v1/constants";
 import { hasSupportedCraftProvider } from "@/app/craft/onboarding/constants";
 import { useLLMProviders } from "@/hooks/useLanguageModels";
+import { useCraftRecommendedModels } from "@/hooks/useCraftRecommendedModels";
 import { checkPreProvisionedSession } from "@/app/craft/services/apiServices";
 
 interface UseBuildSessionControllerProps {
@@ -40,7 +41,11 @@ export function useBuildSessionController({
   // exits onboarding to a ready sandbox. An unsupported-only setup can't craft,
   // so we don't spin trying to provision against it.
   const { llmProviders } = useLLMProviders();
-  const hasAnyProvider = hasSupportedCraftProvider(llmProviders);
+  const { recommendedProviders } = useCraftRecommendedModels();
+  const hasAnyProvider = hasSupportedCraftProvider(
+    llmProviders,
+    recommendedProviders
+  );
 
   // Track previous existingSessionId to detect navigation transitions
   const prevExistingSessionIdRef = useRef<string | null>(existingSessionId);

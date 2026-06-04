@@ -6,11 +6,11 @@ import { Disabled } from "@opal/core";
 import { Text, Tooltip } from "@opal/components";
 import { LLMProviderDescriptor } from "@/lib/languageModels/types";
 import {
-  BUILD_MODE_PROVIDERS as PROVIDERS,
+  getDefaultModelForType,
   type ProviderKey,
 } from "@/app/craft/onboarding/constants";
+import { useCraftRecommendedModels } from "@/hooks/useCraftRecommendedModels";
 
-export { PROVIDERS };
 export type { ProviderKey };
 
 interface SelectableButtonProps {
@@ -136,21 +136,27 @@ export default function OnboardingLlmSetup({
   onConnectionStatusChange,
   onErrorMessageChange,
 }: OnboardingLlmSetupProps) {
-  const currentProviderConfig = PROVIDERS.find(
-    (p) => p.key === selectedProvider
-  )!;
+  const { recommendedProviders } = useCraftRecommendedModels();
 
-  const isProviderConfigured = (providerName: string) => {
-    return llmProviders?.some((p) => p.provider === providerName) ?? false;
+  const currentProvider = recommendedProviders?.find(
+    (p) => p.provider === selectedProvider
+  );
+  const currentModels = currentProvider?.models ?? [];
+  const currentDefaultModel = getDefaultModelForType(
+    recommendedProviders,
+    selectedProvider
+  );
+
+  const isProviderConfigured = (providerType: string) => {
+    return llmProviders?.some((p) => p.provider === providerType) ?? false;
   };
 
   const handleProviderChange = (provider: ProviderKey) => {
-    const providerConfig = PROVIDERS.find((p) => p.key === provider)!;
     // Don't allow selecting already-configured providers
-    if (isProviderConfigured(providerConfig.providerName)) return;
+    if (isProviderConfigured(provider)) return;
 
     onProviderChange(provider);
-    onModelChange(providerConfig.models[0]?.name || "");
+    onModelChange(getDefaultModelForType(recommendedProviders, provider) ?? "");
     onConnectionStatusChange("idle");
     onErrorMessageChange("");
   };
@@ -182,13 +188,15 @@ export default function OnboardingLlmSetup({
           Provider
         </Text>
         <div className="flex justify-center gap-3 w-full max-w-md">
-          {PROVIDERS.map((provider) => {
-            const isConfigured = isProviderConfigured(provider.providerName);
+          {recommendedProviders?.map((provider) => {
+            const isConfigured = isProviderConfigured(provider.provider);
             return (
-              <div key={provider.key} className="flex-1">
+              <div key={provider.provider} className="flex-1">
                 <SelectableButton
-                  selected={selectedProvider === provider.key}
-                  onClick={() => handleProviderChange(provider.key)}
+                  selected={selectedProvider === provider.provider}
+                  onClick={() =>
+                    handleProviderChange(provider.provider as ProviderKey)
+                  }
                   subtext={
                     isConfigured
                       ? "Already configured"
@@ -217,13 +225,13 @@ export default function OnboardingLlmSetup({
           Default Model
         </Text>
         <div className="flex justify-center gap-3 flex-wrap w-full max-w-md">
-          {currentProviderConfig.models.map((model) => (
+          {currentModels.map((model) => (
             <div key={model.name} className="flex-1 min-w-0">
               <ModelSelectButton
                 selected={selectedModel === model.name}
                 onClick={() => handleModelChange(model.name)}
-                label={model.label}
-                recommended={model.recommended}
+                label={model.display_name}
+                recommended={model.name === currentDefaultModel}
                 disabled={connectionStatus === "testing"}
               />
             </div>
@@ -242,7 +250,7 @@ export default function OnboardingLlmSetup({
               type="password"
               value={apiKey}
               onChange={(e) => handleApiKeyChange(e.target.value)}
-              placeholder={currentProviderConfig.apiKeyPlaceholder}
+              placeholder={currentProvider?.api_key_placeholder}
               disabled={connectionStatus === "testing"}
               className="w-full px-3 py-2 rounded-08 input-normal text-text-04 placeholder:text-text-02 focus:outline-hidden"
             />

@@ -18,9 +18,10 @@ import { SWR_KEYS } from "@/lib/swr-keys";
 import { testApiKeyHelper } from "@/sections/modals/languageModels/svc";
 import OnboardingInfoPages from "@/app/craft/onboarding/components/OnboardingInfoPages";
 import OnboardingLlmSetup, {
-  PROVIDERS,
   type ProviderKey,
 } from "@/app/craft/onboarding/components/OnboardingLlmSetup";
+import { getDefaultModelForType } from "@/app/craft/onboarding/constants";
+import { useCraftRecommendedModels } from "@/hooks/useCraftRecommendedModels";
 
 interface BuildOnboardingModalProps {
   mode: OnboardingModalMode;
@@ -92,42 +93,48 @@ export default function BuildOnboardingModal({
   // Determine initial provider for add-llm mode
   const initialProvider = mode.type === "add-llm" ? mode.provider : undefined;
 
+  const { recommendedProviders } = useCraftRecommendedModels();
+
   // LLM setup state
   const [selectedProvider, setSelectedProvider] = useState<ProviderKey>(
     (initialProvider as ProviderKey) || "anthropic"
   );
-  const [selectedModel, setSelectedModel] = useState<string>(
-    PROVIDERS.find((p) => p.key === (initialProvider || "anthropic"))?.models[0]
-      ?.name || ""
-  );
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const [apiKey, setApiKey] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "testing" | "success" | "error"
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Reset LLM state when mode changes to add-llm with a specific provider
+  // Seed the default model once recommendations load; skip if the user chose one.
+  useEffect(() => {
+    if (selectedModel) return;
+    const def = getDefaultModelForType(recommendedProviders, selectedProvider);
+    if (def) setSelectedModel(def);
+  }, [recommendedProviders, selectedProvider, selectedModel]);
+
+  // Reset LLM state on add-llm mode change; model is re-seeded by the effect above.
   useEffect(() => {
     if (mode.type === "add-llm" && mode.provider) {
-      const providerConfig = PROVIDERS.find(
-        (p) => p.key === (mode.provider as ProviderKey)
+      setSelectedProvider(mode.provider as ProviderKey);
+      setSelectedModel(
+        getDefaultModelForType(recommendedProviders, mode.provider) ?? ""
       );
-      if (providerConfig) {
-        setSelectedProvider(providerConfig.key);
-        setSelectedModel(providerConfig.models[0]?.name || "");
-        setApiKey("");
-        setConnectionStatus("idle");
-        setErrorMessage("");
-      }
+      setApiKey("");
+      setConnectionStatus("idle");
+      setErrorMessage("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentProviderConfig = PROVIDERS.find(
-    (p) => p.key === selectedProvider
-  )!;
+  const currentProvider = recommendedProviders?.find(
+    (p) => p.provider === selectedProvider
+  );
+  const currentProviderLabel = currentProvider?.label ?? selectedProvider;
+  const currentProviderModels = currentProvider?.models ?? [];
   const isLlmValid = apiKey.trim() && selectedModel;
 
   // Calculate step navigation
@@ -156,13 +163,13 @@ export default function BuildOnboardingModal({
     setConnectionStatus("testing");
     setErrorMessage("");
 
-    const providerName = currentProviderConfig.label;
+    const providerName = currentProviderLabel;
     const payload = {
       name: providerName,
-      provider: currentProviderConfig.providerName,
+      provider: selectedProvider,
       api_key: apiKey,
       default_model_name: selectedModel,
-      model_configurations: currentProviderConfig.models.map((m) => ({
+      model_configurations: currentProviderModels.map((m) => ({
         name: m.name,
         is_visible: true,
         max_input_tokens: null,
@@ -171,7 +178,7 @@ export default function BuildOnboardingModal({
     };
 
     const testResult = await testApiKeyHelper(
-      currentProviderConfig.providerName,
+      selectedProvider,
       payload,
       apiKey,
       selectedModel
@@ -226,7 +233,7 @@ export default function BuildOnboardingModal({
       }
 
       track(AnalyticsEvent.CONFIGURED_LLM_PROVIDER, {
-        provider: currentProviderConfig.providerName,
+        provider: selectedProvider,
         is_creation: true,
         source: LLMProviderConfiguredSource.CRAFT_ONBOARDING,
       });

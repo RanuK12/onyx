@@ -5,10 +5,10 @@ import { SelectButton } from "@opal/components";
 import { BuildLLMPopover } from "@/app/craft/components/BuildLLMPopover";
 import { useOnboarding } from "@/app/craft/onboarding/BuildOnboardingProvider";
 import { useLLMProviders } from "@/hooks/useLanguageModels";
+import { useCraftRecommendedModels } from "@/hooks/useCraftRecommendedModels";
 import { getModelIcon } from "@/lib/languageModels";
 import {
   BuildLlmSelection,
-  BUILD_MODE_PROVIDERS,
   getDefaultLlmSelection,
 } from "@/app/craft/onboarding/constants";
 
@@ -26,11 +26,13 @@ export default function ModelPickerButton({
   disabled = false,
 }: ModelPickerButtonProps) {
   const { llmProviders } = useLLMProviders();
+  const { recommendedProviders } = useCraftRecommendedModels();
   const { openLlmSetup } = useOnboarding();
 
   const effective = useMemo(
-    () => selection ?? getDefaultLlmSelection(llmProviders),
-    [selection, llmProviders]
+    () =>
+      selection ?? getDefaultLlmSelection(recommendedProviders, llmProviders),
+    [selection, recommendedProviders, llmProviders]
   );
 
   const displayName = useMemo(() => {
@@ -43,12 +45,12 @@ export default function ModelPickerButton({
         if (config) return config.display_name || config.name;
       }
     }
-    for (const provider of BUILD_MODE_PROVIDERS) {
+    for (const provider of recommendedProviders ?? []) {
       const model = provider.models.find((m) => m.name === effective.modelName);
-      if (model) return model.label;
+      if (model) return model.display_name;
     }
     return effective.modelName;
-  }, [effective, llmProviders]);
+  }, [effective, llmProviders, recommendedProviders]);
 
   const ModelIcon = effective ? getModelIcon(effective.provider) : undefined;
 

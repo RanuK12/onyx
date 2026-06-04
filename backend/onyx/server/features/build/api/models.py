@@ -12,11 +12,25 @@ from onyx.db.enums import EndpointPolicy
 from onyx.db.enums import ExternalAppType
 from onyx.db.enums import SandboxStatus
 from onyx.db.enums import SharingScope
+from onyx.server.features.build.configs import BuildModeProvider
 from onyx.server.features.build.sandbox.models import FilesystemEntry as FileSystemEntry
 
 if TYPE_CHECKING:
     from onyx.db.models import BuildSession
     from onyx.db.models import Sandbox
+
+
+# ===== Recommended Models =====
+class BuildRecommendedModel(BaseModel):
+    name: str
+    display_name: str
+
+
+class BuildRecommendedProvider(BuildModeProvider):
+    """A Craft-supported provider (its static chrome) plus recommended models."""
+
+    recommended_default_model: str | None
+    models: list[BuildRecommendedModel]
 
 
 # ===== Session Models =====

@@ -12,9 +12,10 @@ import { Switch } from "@opal/components";
 import { LLMProviderDescriptor } from "@/lib/languageModels/types";
 import {
   BuildLlmSelection,
-  BUILD_MODE_PROVIDERS,
-  isRecommendedModel,
+  isRecommendedModelName,
+  getTopRecommendedModelLabel,
 } from "@/app/craft/onboarding/constants";
+import { useCraftRecommendedModels } from "@/hooks/useCraftRecommendedModels";
 import { ToggleWarningModal } from "./ToggleWarningModal";
 import { getModelIcon } from "@/lib/languageModels";
 import { Section } from "@/layouts/general-layouts";
@@ -52,6 +53,7 @@ export function BuildLLMPopover({
   children,
   disabled = false,
 }: BuildLLMPopoverProps) {
+  const { recommendedProviders } = useCraftRecommendedModels();
   const [showRecommendedOnly, setShowRecommendedOnly] = useState(true);
   const [showToggleWarning, setShowToggleWarning] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -80,26 +82,28 @@ export function BuildLLMPopover({
     const options: ModelOption[] = [];
 
     if (showRecommendedOnly) {
-      // Show curated list from BUILD_MODE_PROVIDERS
-      BUILD_MODE_PROVIDERS.forEach((provider) => {
-        const isConfigured = isProviderConfigured(provider.providerName);
-        const descriptor = getProviderDescriptor(provider.providerName);
-        const modelsToShow = provider.models.filter((m) => m.recommended);
+      recommendedProviders?.forEach((rp) => {
+        const defaultName = rp.recommended_default_model;
+        if (!defaultName) return;
 
-        modelsToShow.forEach((model) => {
-          // Get display name from backend if available
-          const backendConfig = descriptor?.model_configurations.find(
-            (mc) => mc.name === model.name
-          );
-          options.push({
-            providerKey: provider.providerName,
-            providerName: descriptor?.name || provider.label,
-            providerDisplayName: provider.label,
-            modelName: model.name,
-            displayName: backendConfig?.display_name || model.label,
-            isRecommended: true,
-            isConfigured: isConfigured ?? false,
-          });
+        const isConfigured = isProviderConfigured(rp.provider);
+        const descriptor = getProviderDescriptor(rp.provider);
+        const recModel = rp.models.find((m) => m.name === defaultName);
+        const backendConfig = descriptor?.model_configurations.find(
+          (mc) => mc.name === defaultName
+        );
+
+        options.push({
+          providerKey: rp.provider,
+          providerName: descriptor?.name || rp.label,
+          providerDisplayName: rp.label,
+          modelName: defaultName,
+          displayName:
+            backendConfig?.display_name ||
+            recModel?.display_name ||
+            defaultName,
+          isRecommended: true,
+          isConfigured: isConfigured ?? false,
         });
       });
     } else {
@@ -117,7 +121,10 @@ export function BuildLLMPopover({
               provider.provider_display_name || provider.provider,
             modelName: model.name,
             displayName: model.display_name || model.name,
-            isRecommended: isRecommendedModel(model.name),
+            isRecommended: isRecommendedModelName(
+              recommendedProviders,
+              model.name
+            ),
             isConfigured: true,
           });
         });
@@ -128,6 +135,7 @@ export function BuildLLMPopover({
   }, [
     showRecommendedOnly,
     llmProviders,
+    recommendedProviders,
     isProviderConfigured,
     getProviderDescriptor,
   ]);
@@ -441,6 +449,9 @@ export function BuildLLMPopover({
       {/* Warning modal when turning OFF "Recommended Models Only" */}
       <ToggleWarningModal
         open={showToggleWarning}
+        recommendedModelLabel={getTopRecommendedModelLabel(
+          recommendedProviders
+        )}
         onConfirm={() => {
           setShowRecommendedOnly(false);
           isClosingModalRef.current = true;

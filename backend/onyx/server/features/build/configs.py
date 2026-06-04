@@ -1,6 +1,8 @@
 import os
 from enum import Enum
 
+from pydantic import BaseModel
+
 
 class SandboxBackend(str, Enum):
     KUBERNETES = "kubernetes"
@@ -66,15 +68,30 @@ SANDBOX_SERVICE_ACCOUNT_NAME = os.environ.get(
 
 ENABLE_CRAFT = os.environ.get("ENABLE_CRAFT", "false").lower() == "true"
 
-# Keep in sync with BUILD_MODE_PROVIDERS in
-# web/src/app/craft/onboarding/constants.ts; enforced by
-# test_build_mode_provider_types_sync.py.
-BUILD_MODE_ALLOWED_PROVIDER_TYPES = ["anthropic", "openai", "openrouter"]
-BUILD_MODE_RECOMMENDED_MODEL_BY_TYPE = {
-    "anthropic": "claude-opus-4-8",
-    "openai": "gpt-5.5",
-    "openrouter": "minimax/minimax-m3",
-}
+
+# Single source of truth for Craft-supported providers; served via
+# /build/recommended-models. Recommended models come from the shared config.
+class BuildModeProvider(BaseModel):
+    provider: str  # provider type, e.g. "anthropic"
+    label: str
+    recommended: bool = False
+    api_key_placeholder: str
+
+
+BUILD_MODE_PROVIDERS: list[BuildModeProvider] = [
+    BuildModeProvider(
+        provider="anthropic",
+        label="Anthropic",
+        recommended=True,
+        api_key_placeholder="sk-ant-...",
+    ),
+    BuildModeProvider(provider="openai", label="OpenAI", api_key_placeholder="sk-..."),
+    BuildModeProvider(
+        provider="openrouter", label="OpenRouter", api_key_placeholder="sk-or-..."
+    ),
+]
+
+BUILD_MODE_ALLOWED_PROVIDER_TYPES = [p.provider for p in BUILD_MODE_PROVIDERS]
 
 # Dev/debug-only: exposes an SSE endpoint that tails the sandbox pod's
 # opencode-serve container logs. Never enable in prod — the logs include LLM I/O

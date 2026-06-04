@@ -29,6 +29,7 @@ from onyx.server.features.build.api.external_apps_oauth_api import (
     router as external_apps_oauth_router,
 )
 from onyx.server.features.build.api.messages_api import router as messages_router
+from onyx.server.features.build.api.models import BuildRecommendedProvider
 from onyx.server.features.build.api.models import RateLimitResponse
 from onyx.server.features.build.api.rate_limit import get_user_rate_limit_status
 from onyx.server.features.build.api.sessions_api import router as sessions_router
@@ -36,6 +37,9 @@ from onyx.server.features.build.api.user_library import router as user_library_r
 from onyx.server.features.build.approvals.api import router as approvals_router
 from onyx.server.features.build.db.build_session import get_webapp_access_async
 from onyx.server.features.build.db.build_session import get_webapp_target_async
+from onyx.server.features.build.recommended_models import (
+    get_build_recommended_providers,
+)
 from onyx.server.features.build.sandbox.base import get_sandbox_manager
 from onyx.server.features.build.scheduled_tasks.api import (
     router as scheduled_tasks_router,
@@ -113,6 +117,21 @@ def get_rate_limit(
 ) -> RateLimitResponse:
     """Get rate limit information for the current user."""
     return get_user_rate_limit_status(user, db_session)
+
+
+# -----------------------------------------------------------------------------
+# Recommended Models
+# -----------------------------------------------------------------------------
+
+
+@router.get("/recommended-models")
+def get_recommended_models(
+    _: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+) -> list[BuildRecommendedProvider]:
+    """The Craft-supported providers (chrome + recommended models), the single
+    source of truth for the model picker. Non-admin so the user-facing picker
+    can read it; models come from the shared recommended-models config."""
+    return get_build_recommended_providers()
 
 
 # Response headers to skip when proxying back from the sandbox.

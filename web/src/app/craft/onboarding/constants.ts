@@ -10,142 +10,101 @@ export interface BuildLlmSelection {
 
 export type ProviderKey = "anthropic" | "openai" | "openrouter";
 
-// Single source of truth for Craft providers/models; everything below derives
-// from it (allowed types, recommended flags, default selection).
-export interface BuildModeModel {
+// `/api/build/recommended-models` response shape (backend-owned source of truth).
+export interface BuildRecommendedModel {
   name: string;
-  label: string;
-  recommended?: boolean;
+  display_name: string;
 }
 
-export interface BuildModeProvider {
-  key: ProviderKey;
+export interface BuildRecommendedProvider {
+  provider: string;
   label: string;
-  providerName: string;
-  recommended?: boolean;
-  models: BuildModeModel[];
-  // API-related fields (optional, only needed for onboarding modal)
-  apiKeyPlaceholder?: string;
-  apiKeyUrl?: string;
-  apiKeyLabel?: string;
+  recommended: boolean;
+  api_key_placeholder: string;
+  recommended_default_model: string | null;
+  models: BuildRecommendedModel[];
 }
-
-export const BUILD_MODE_PROVIDERS: BuildModeProvider[] = [
-  {
-    key: "anthropic",
-    label: "Anthropic",
-    providerName: "anthropic",
-    recommended: true,
-    models: [
-      { name: "claude-opus-4-8", label: "Claude Opus 4.8", recommended: true },
-      { name: "claude-opus-4-7", label: "Claude Opus 4.7" },
-      { name: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-    ],
-    apiKeyPlaceholder: "sk-ant-...",
-    apiKeyUrl: "https://console.anthropic.com/dashboard",
-    apiKeyLabel: "Anthropic Console",
-  },
-  {
-    key: "openai",
-    label: "OpenAI",
-    providerName: "openai",
-    models: [
-      { name: "gpt-5.5", label: "GPT-5.5", recommended: true },
-      { name: "gpt-5.4", label: "GPT-5.4" },
-      { name: "gpt-5.3", label: "GPT-5.3" },
-    ],
-    apiKeyPlaceholder: "sk-...",
-    apiKeyUrl: "https://platform.openai.com/api-keys",
-    apiKeyLabel: "OpenAI Dashboard",
-  },
-  {
-    key: "openrouter",
-    label: "OpenRouter",
-    providerName: "openrouter",
-    models: [
-      {
-        name: "minimax/minimax-m3",
-        label: "MiniMax M3",
-        recommended: true,
-      },
-      {
-        name: "moonshotai/kimi-k2.6",
-        label: "Kimi K2.6",
-      },
-    ],
-    apiKeyPlaceholder: "sk-or-...",
-    apiKeyUrl: "https://openrouter.ai/keys",
-    apiKeyLabel: "OpenRouter Dashboard",
-  },
-];
-
-// Allowed provider types are just the curated providers' keys. Keep
-// BUILD_MODE_PROVIDERS in sync with the backend BUILD_MODE_ALLOWED_PROVIDER_TYPES
-// (enforced by test_build_mode_provider_types_sync.py).
-const ALLOWED_PROVIDER_TYPES = new Set<string>(
-  BUILD_MODE_PROVIDERS.map((p) => p.key)
-);
-const RECOMMENDED_MODEL_NAMES = new Set(
-  BUILD_MODE_PROVIDERS.flatMap((p) =>
-    p.models.filter((m) => m.recommended).map((m) => m.name)
-  )
-);
-
-// Top recommended Craft model's label, derived so UI copy isn't hardcoded.
-export const RECOMMENDED_CRAFT_MODEL_LABEL: string = (() => {
-  const provider =
-    BUILD_MODE_PROVIDERS.find((p) => p.recommended) ?? BUILD_MODE_PROVIDERS[0]!;
-  const model =
-    provider.models.find((m) => m.recommended) ?? provider.models[0]!;
-  return model.label;
-})();
 
 interface MinimalLlmProvider {
   name: string | null;
   provider: string;
 }
 
-export function isSupportedProviderType(provider: string): boolean {
-  return ALLOWED_PROVIDER_TYPES.has(provider);
-}
-
-// True when at least one configured provider is a supported Craft type
-// (anthropic/openai/openrouter). The gate for both onboarding LLM setup and
-// pre-provisioning — an unsupported-only setup (e.g. Azure) can't craft.
-export function hasSupportedCraftProvider(
-  llmProviders: { provider: string }[] | undefined
+export function isSupportedProviderType(
+  provider: string,
+  recommendedProviders: BuildRecommendedProvider[] | undefined
 ): boolean {
-  return !!llmProviders?.some((p) => isSupportedProviderType(p.provider));
+  return !!recommendedProviders?.some((p) => p.provider === provider);
 }
 
-export function isRecommendedModel(modelName: string): boolean {
-  return RECOMMENDED_MODEL_NAMES.has(modelName);
+// At least one configured provider is a supported Craft type. `false` until
+// recommendations have loaded.
+export function hasSupportedCraftProvider(
+  llmProviders: { provider: string }[] | undefined,
+  recommendedProviders: BuildRecommendedProvider[] | undefined
+): boolean {
+  return !!llmProviders?.some((p) =>
+    isSupportedProviderType(p.provider, recommendedProviders)
+  );
 }
 
-function defaultModelForType(key: ProviderKey): string {
-  const p = BUILD_MODE_PROVIDERS.find((x) => x.key === key)!;
-  return (p.models.find((m) => m.recommended) ?? p.models[0]!).name;
+export function isRecommendedModelName(
+  recommendedProviders: BuildRecommendedProvider[] | undefined,
+  modelName: string
+): boolean {
+  return !!recommendedProviders?.some(
+    (p) => p.recommended_default_model === modelName
+  );
+}
+
+export function getDefaultModelForType(
+  recommendedProviders: BuildRecommendedProvider[] | undefined,
+  key: string
+): string | null {
+  const p = recommendedProviders?.find((x) => x.provider === key);
+  if (!p) return null;
+  return p.recommended_default_model ?? p.models[0]?.name ?? null;
 }
 
 // Highest-priority configured provider of a supported type, with that type's
 // recommended model. Access control is enforced server-side at session create.
 export function getDefaultLlmSelection(
+  recommendedProviders: BuildRecommendedProvider[] | undefined,
   llmProviders: MinimalLlmProvider[] | undefined
 ): BuildLlmSelection | null {
   if (!llmProviders || llmProviders.length === 0) return null;
 
-  for (const p of BUILD_MODE_PROVIDERS) {
-    const match = llmProviders.find((lp) => lp.provider === p.key);
+  for (const rp of recommendedProviders ?? []) {
+    const match = llmProviders.find((lp) => lp.provider === rp.provider);
     if (match) {
+      const modelName = getDefaultModelForType(
+        recommendedProviders,
+        rp.provider
+      );
+      if (!modelName) continue;
       return {
         providerName: match.name ?? "",
         provider: match.provider,
-        modelName: defaultModelForType(p.key),
+        modelName,
       };
     }
   }
 
   return null;
+}
+
+// Display label of the top recommended model (generic phrase until loaded).
+export function getTopRecommendedModelLabel(
+  recommendedProviders: BuildRecommendedProvider[] | undefined
+): string {
+  const rp =
+    recommendedProviders?.find((p) => p.recommended) ??
+    recommendedProviders?.[0];
+  const defaultName = rp?.recommended_default_model;
+  if (!defaultName) return "the recommended model";
+  return (
+    rp?.models.find((m) => m.name === defaultName)?.display_name ?? defaultName
+  );
 }
 
 // =============================================================================
